@@ -210,27 +210,22 @@ def get_quantized_model_device_map(
                 "'sequential'."
             )
 
-        special_dtypes = {}
-        special_dtypes.update(
-            {
-                name: bnb_quantization_config.torch_dtype
-                for name, _ in model.named_parameters()
-                if any(m in name for m in bnb_quantization_config.skip_modules)
-            }
-        )
-        special_dtypes.update(
-            {
-                name: torch.float32
-                for name, _ in model.named_parameters()
-                if any(m in name for m in bnb_quantization_config.keep_in_fp32_modules)
-            }
-        )
-
-        kwargs = {}
-        kwargs["special_dtypes"] = special_dtypes
-        kwargs["no_split_module_classes"] = no_split_module_classes
-        kwargs["dtype"] = bnb_quantization_config.target_dtype
-
+        special_dtypes = {
+            name: bnb_quantization_config.torch_dtype
+            for name, _ in model.named_parameters()
+            if any(m in name for m in bnb_quantization_config.skip_modules)
+        } | {
+            name: torch.float32
+            for name, _ in model.named_parameters()
+            if any(
+                m in name for m in bnb_quantization_config.keep_in_fp32_modules
+            )
+        }
+        kwargs = {
+            "special_dtypes": special_dtypes,
+            "no_split_module_classes": no_split_module_classes,
+            "dtype": bnb_quantization_config.target_dtype,
+        }
         # get max_memory for each device.
         if device_map != "sequential":
             max_memory = get_balanced_memory(
@@ -325,13 +320,12 @@ def _replace_with_bnb_layers(
         if isinstance(module, nn.Linear) and name not in modules_to_not_convert:
             # Check if the current key is not in the `modules_to_not_convert`
             current_key_name_str = ".".join(current_key_name)
-            proceed = True
-            for key in modules_to_not_convert:
-                if (
-                    (key in current_key_name_str) and (key + "." in current_key_name_str)
-                ) or key == current_key_name_str:
-                    proceed = False
-                    break
+            proceed = not any(
+                key in current_key_name_str
+                and f"{key}." in current_key_name_str
+                or key == current_key_name_str
+                for key in modules_to_not_convert
+            )
             if proceed:
                 # Load bnb module with empty weight and replace ``nn.Linear` module
                 if bnb_quantization_config.load_in_8bit:
@@ -359,7 +353,7 @@ def _replace_with_bnb_layers(
                 bnb_module.requires_grad_(False)
                 setattr(model, name, bnb_module)
                 has_been_replaced = True
-        if len(list(module.children())) > 0:
+        if list(module.children()):
             _, _has_been_replaced = _replace_with_bnb_layers(
                 module, bnb_quantization_config, modules_to_not_convert, current_key_name
             )
@@ -426,10 +420,7 @@ def has_4bit_bnb_layers(model):
     # bitsandbytes will initialize CUDA on import, so it needs to be imported lazily
     import bitsandbytes as bnb
 
-    for m in model.modules():
-        if isinstance(m, bnb.nn.Linear4bit):
-            return True
-    return False
+    return any(isinstance(m, bnb.nn.Linear4bit) for m in model.modules())
 
 
 def get_parameter_device(parameter: nn.Module):

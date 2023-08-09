@@ -116,33 +116,30 @@ class AcceleratedOptimizer(torch.optim.Optimizer):
                 if set_to_none is None:
                     set_to_none = False
                 self.optimizer.zero_grad(set_to_none=set_to_none)
-            else:
-                if set_to_none is not None:
-                    raise ValueError("`set_to_none` for Optimizer.zero_grad` is not supported by this optimizer.")
+            elif set_to_none is None:
                 self.optimizer.zero_grad()
+            else:
+                raise ValueError("`set_to_none` for Optimizer.zero_grad` is not supported by this optimizer.")
 
     def step(self, closure=None):
-        if self.gradient_state.sync_gradients:
-            if self.accelerator_state.distributed_type == DistributedType.TPU:
-                optimizer_args = {"closure": closure} if closure is not None else {}
-                xm.optimizer_step(self.optimizer, optimizer_args=optimizer_args)
-            elif self.scaler is not None:
-                self.optimizer.step = self._optimizer_patched_step_method
+        if not self.gradient_state.sync_gradients:
+            return
+        if self.accelerator_state.distributed_type == DistributedType.TPU:
+            optimizer_args = {"closure": closure} if closure is not None else {}
+            xm.optimizer_step(self.optimizer, optimizer_args=optimizer_args)
+        elif self.scaler is not None:
+            self.optimizer.step = self._optimizer_patched_step_method
 
-                self.scaler.step(self.optimizer, closure)
-                self.scaler.update()
+            self.scaler.step(self.optimizer, closure)
+            self.scaler.update()
 
-                if not self._accelerate_step_called:
-                    # If the optimizer step was skipped, gradient overflow was detected.
-                    self._is_overflow = True
-                else:
-                    self._is_overflow = False
-                # Reset the step method to the original one
-                self.optimizer.step = self._optimizer_original_step_method
-                # Reset the indicator
-                self._accelerate_step_called = False
-            else:
-                self.optimizer.step(closure)
+            self._is_overflow = not self._accelerate_step_called
+            # Reset the step method to the original one
+            self.optimizer.step = self._optimizer_original_step_method
+            # Reset the indicator
+            self._accelerate_step_called = False
+        else:
+            self.optimizer.step(closure)
 
     def _switch_parameters(self, parameters_map):
         for param_group in self.optimizer.param_groups:

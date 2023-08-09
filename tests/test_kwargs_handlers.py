@@ -92,8 +92,8 @@ class KwargsHandlerTester(unittest.TestCase):
             prefix = "ACCELERATE_DYNAMO_"
             # nvfuser's dynamo backend name is "nvprims_nvfuser"
             # use "nvfuser" here to cause exception if this test causes os.environ changed permanently
-            os.environ[prefix + "BACKEND"] = "nvfuser"
-            os.environ[prefix + "MODE"] = "reduce-overhead"
+            os.environ[f"{prefix}BACKEND"] = "nvfuser"
+            os.environ[f"{prefix}MODE"] = "reduce-overhead"
 
             dynamo_plugin_kwargs = TorchDynamoPlugin().to_kwargs()
             self.assertEqual(dynamo_plugin_kwargs, {"backend": "nvfuser", "mode": "reduce-overhead"})

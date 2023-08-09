@@ -156,7 +156,7 @@ def test_distributed_sync_multiple_fwd(accelerator):
     # Do multiple forwards
     losses = []
     num_iterations = 3
-    for iteration in range(num_iterations):
+    for _ in range(num_iterations):
         ddp_input, ddp_target = next(iter(dataloader)).values()
 
         # Gather the distributed inputs and targs for the base model
@@ -277,8 +277,8 @@ def test_gradient_accumulation_with_opt_and_scheduler(split_batches=False, dispa
         assert (
             opt.param_groups[0]["lr"] == ddp_opt.param_groups[0]["lr"]
         ), f'Learning rates found in each optimizer did not align\nopt: {opt.param_groups[0]["lr"]}\nDDP opt: {ddp_opt.param_groups[0]["lr"]}\n'
-        did_step = (((iteration + 1) % 2) == 0) or ((iteration + 1) == len(dataloader))
         if accelerator.num_processes > 1:
+            did_step = (((iteration + 1) % 2) == 0) or ((iteration + 1) == len(dataloader))
             check_model_parameters(model, ddp_model, did_step, iteration)
         # Shuffle ddp_input on each iteration
         torch.manual_seed(1337 + iteration)

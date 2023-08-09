@@ -374,12 +374,9 @@ def named_module_tensors(module: nn.Module, include_buffers: bool = True, recurs
         recurse (`bool`, *optional`, defaults to `False`):
             Whether or not to go look in every submodule or just return the direct parameters and buffers.
     """
-    for named_parameter in module.named_parameters(recurse=recurse):
-        yield named_parameter
-
+    yield from module.named_parameters(recurse=recurse)
     if include_buffers:
-        for named_buffer in module.named_buffers(recurse=recurse):
-            yield named_buffer
+        yield from module.named_buffers(recurse=recurse)
 
 
 class FindTiedParametersResult(list):
@@ -393,7 +390,7 @@ class FindTiedParametersResult(list):
 
     def values(self):
         # TODO: at the next Transformers release (4.28.0) issue a deprecation warning here.
-        return sum([x[1:] for x in self], [])
+        return sum((x[1:] for x in self), [])
 
 
 def check_tied_parameters_in_config(model: nn.Module):
@@ -451,9 +448,9 @@ def check_tied_parameters_on_same_device(tied_params, device_map):
 
     """
     for tie_param in tied_params:
-        tie_param_devices = {}
-        for param in tie_param:
-            tie_param_devices[param] = _get_param_device(param, device_map)
+        tie_param_devices = {
+            param: _get_param_device(param, device_map) for param in tie_param
+        }
         if len(set(tie_param_devices.values())) > 1:
             logger.warn(
                 f"Tied parameters are on different devices: {tie_param_devices}. "
@@ -496,7 +493,7 @@ def find_tied_parameters(model: nn.Module, **kwargs):
     result = kwargs.get("result", {})
 
     if named_parameters is None:
-        named_parameters = {n: p for n, p in model.named_parameters()}
+        named_parameters = dict(model.named_parameters())
     else:
         # A tied parameter will not be in the full `named_parameters` seen above but will be in the `named_parameters`
         # of the submodule it belongs to. So while recursing we track the names that are not in the initial
@@ -606,10 +603,13 @@ def get_max_layer_size(
     max_size = 0
     layer_names = []
     modules_to_treat = modules.copy()
-    while len(modules_to_treat) > 0:
+    while modules_to_treat:
         module_name, module = modules_to_treat.pop(0)
         modules_children = list(module.named_children()) if isinstance(module, torch.nn.Module) else []
-        if len(modules_children) == 0 or module.__class__.__name__ in no_split_module_classes:
+        if (
+            not modules_children
+            or module.__class__.__name__ in no_split_module_classes
+        ):
             # No splitting this one so we compare to the max_size
             size = module_sizes[module_name]
             if size > max_size:
@@ -632,16 +632,14 @@ def get_max_memory(max_memory: Optional[Dict[Union[int, str], Union[int, str]]] 
         if not (torch.cuda.is_available() or is_xpu_available()):
             max_memory = {}
 
+        elif not is_xpu_available():
+            for i in range(torch.cuda.device_count()):
+                _ = torch.tensor([0], device=i)
+            max_memory = {i: torch.cuda.mem_get_info(i)[0] for i in range(torch.cuda.device_count())}
         else:
-            # Make sure CUDA is initialized on each GPU to have the right memory info.
-            if not is_xpu_available():
-                for i in range(torch.cuda.device_count()):
-                    _ = torch.tensor([0], device=i)
-                max_memory = {i: torch.cuda.mem_get_info(i)[0] for i in range(torch.cuda.device_count())}
-            else:
-                for i in range(torch.xpu.device_count()):
-                    _ = torch.tensor(0, device=torch.device("xpu", i))
-                max_memory = {i: torch.xpu.max_memory_allocated(i) for i in range(torch.xpu.device_count())}
+            for i in range(torch.xpu.device_count()):
+                _ = torch.tensor(0, device=torch.device("xpu", i))
+            max_memory = {i: torch.xpu.max_memory_allocated(i) for i in range(torch.xpu.device_count())}
         # allocate everything in the mps device as the RAM is shared
         if is_mps_available():
             max_memory["mps"] = psutil.virtual_memory().available
@@ -680,7 +678,7 @@ def clean_device_map(device_map: Dict[str, Union[int, str, torch.device]], modul
     Cleans a device_map by grouping all submodules that go on the same device together.
     """
     # Get the value of the current module and if there is only one split across several keys, regroup it.
-    prefix = "" if module_name == "" else f"{module_name}."
+    prefix = "" if not module_name else f"{module_name}."
     values = [v for k, v in device_map.items() if k.startswith(prefix)]
     if len(set(values)) == 1 and len(values) > 1:
         for k in [k for k in device_map if k.startswith(prefix)]:
@@ -688,9 +686,13 @@ def clean_device_map(device_map: Dict[str, Union[int, str, torch.device]], modul
         device_map[module_name] = values[0]
 
     # Recurse over the children
-    children_modules = [k for k in device_map.keys() if k.startswith(prefix) and len(k) > len(module_name)]
-    idx = len(module_name.split(".")) + 1 if len(module_name) > 0 else 1
-    children_modules = set(".".join(k.split(".")[:idx]) for k in children_modules)
+    children_modules = [
+        k
+        for k in device_map
+        if k.startswith(prefix) and len(k) > len(module_name)
+    ]
+    idx = len(module_name.split(".")) + 1 if module_name != "" else 1
+    children_modules = {".".join(k.split(".")[:idx]) for k in children_modules}
     for child in children_modules:
         clean_device_map(device_map, module_name=child)
 
@@ -823,16 +825,24 @@ def get_balanced_memory(
 
             if set(no_split_children.keys()) == set(no_split_module_classes):
                 break
-        buffer = max(no_split_children.values()) if len(no_split_children) > 0 else 0
+        buffer = max(no_split_children.values()) if no_split_children else 0
     else:
         buffer = 0
 
     # Compute mean of final modules. In the first dict of module sizes, leaves are the parameters
-    leaves = [n for n in module_sizes if len([p for p in module_sizes if n == "" or p.startswith(n + ".")]) == 0]
+    leaves = [
+        n
+        for n in module_sizes
+        if not [p for p in module_sizes if n == "" or p.startswith(f"{n}.")]
+    ]
     module_sizes = {n: v for n, v in module_sizes.items() if n not in leaves}
     # Once removed, leaves are the final modules.
-    leaves = [n for n in module_sizes if len([p for p in module_sizes if n == "" or p.startswith(n + ".")]) == 0]
-    mean_leaves = int(sum([module_sizes[n] for n in leaves]) / max(len(leaves), 1))
+    leaves = [
+        n
+        for n in module_sizes
+        if not [p for p in module_sizes if n == "" or p.startswith(f"{n}.")]
+    ]
+    mean_leaves = int(sum(module_sizes[n] for n in leaves) / max(len(leaves), 1))
     buffer = int(1.25 * max(buffer, mean_leaves))
     per_gpu += buffer
 
@@ -847,7 +857,11 @@ def get_balanced_memory(
         max_memory[idx] = min(max_memory[0] if low_zero and idx == 0 else per_gpu, max_memory[idx])
 
     if low_zero:
-        min_zero = max(0, module_sizes[""] - sum([max_memory[i] for i in range(1, num_devices)]))
+        min_zero = max(
+            0,
+            module_sizes[""]
+            - sum(max_memory[i] for i in range(1, num_devices)),
+        )
         max_memory[0] = min(min_zero, max_memory[0])
 
     return max_memory

@@ -150,6 +150,9 @@ def test_mrpc(dispatch_batches: bool = False, split_batches: bool = False):
 
 
 def test_gather_for_metrics_with_iterable_dataset():
+
+
+
     class DummyIterableDataset(IterableDataset):
         def __init__(self, data):
             self.data = data
@@ -158,8 +161,8 @@ def test_gather_for_metrics_with_iterable_dataset():
             return len(self.data)
 
         def __iter__(self):
-            for element in self.data:
-                yield element
+            yield from self.data
+
 
     iterable_dataset = DummyIterableDataset(torch.as_tensor(range(30)))
     dataloader = DataLoader(iterable_dataset, batch_size=4)
@@ -174,10 +177,9 @@ def test_gather_for_metrics_with_iterable_dataset():
         list_handler = ListHandler()
         logger.addHandler(list_handler)
 
-    batches_for_metrics = []
-    for batch in prepared_dataloader:
-        batches_for_metrics.append(accelerator.gather_for_metrics(batch))
-
+    batches_for_metrics = [
+        accelerator.gather_for_metrics(batch) for batch in prepared_dataloader
+    ]
     assert torch.cat(batches_for_metrics).size(0) == 30
 
     if accelerator.is_main_process:

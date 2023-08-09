@@ -61,26 +61,17 @@ def write_basic_config(mixed_precision="no", save_location: str = default_json_c
         num_gpus = torch.cuda.device_count()
         config["num_processes"] = num_gpus
         config["use_cpu"] = False
-        if num_gpus > 1:
-            config["distributed_type"] = "MULTI_GPU"
-        else:
-            config["distributed_type"] = "NO"
+        config["distributed_type"] = "MULTI_GPU" if num_gpus > 1 else "NO"
     elif is_xpu_available() and use_xpu:
         num_xpus = torch.xpu.device_count()
         config["num_processes"] = num_xpus
         config["use_cpu"] = False
-        if num_xpus > 1:
-            config["distributed_type"] = "MULTI_XPU"
-        else:
-            config["distributed_type"] = "NO"
+        config["distributed_type"] = "MULTI_XPU" if num_xpus > 1 else "NO"
     elif is_npu_available():
         num_npus = torch.npu.device_count()
         config["num_processes"] = num_npus
         config["use_cpu"] = False
-        if num_npus > 1:
-            config["distributed_type"] = "MULTI_NPU"
-        else:
-            config["distributed_type"] = "NO"
+        config["distributed_type"] = "MULTI_NPU" if num_npus > 1 else "NO"
     else:
         num_xpus = 0
         config["use_cpu"] = True
@@ -120,6 +111,7 @@ def default_command_parser(parser, parents):
 
 
 def default_config_command(args):
-    config_file = write_basic_config(args.mixed_precision, args.save_location)
-    if config_file:
+    if config_file := write_basic_config(
+        args.mixed_precision, args.save_location
+    ):
         print(f"accelerate configuration saved at {config_file}")

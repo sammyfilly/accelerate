@@ -171,9 +171,9 @@ def training_function(config, args):
     for epoch in range(num_epochs):
         model.train()
         with LocalSGD(
-            accelerator=accelerator, model=model, local_sgd_steps=local_sgd_steps, enabled=local_sgd_steps is not None
-        ) as local_sgd:
-            for step, batch in enumerate(train_dataloader):
+                    accelerator=accelerator, model=model, local_sgd_steps=local_sgd_steps, enabled=local_sgd_steps is not None
+                ) as local_sgd:
+            for batch in train_dataloader:
                 # We could avoid this line since we set the accelerator with `device_placement=True`.
                 batch.to(accelerator.device)
                 # New code #
@@ -190,7 +190,7 @@ def training_function(config, args):
                     local_sgd.step()
 
         model.eval()
-        for step, batch in enumerate(eval_dataloader):
+        for batch in eval_dataloader:
             # We could avoid this line since we set the accelerator with `device_placement=True`.
             batch.to(accelerator.device)
             with torch.no_grad():

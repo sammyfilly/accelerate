@@ -103,22 +103,18 @@ def is_bf16_available(ignore_tpu=False):
         return not ignore_tpu
     if torch.cuda.is_available():
         return torch.cuda.is_bf16_supported()
-    if is_npu_available():
-        return False
-    return True
+    return not is_npu_available()
 
 
 def is_4bit_bnb_available():
-    package_exists = _is_package_available("bitsandbytes")
-    if package_exists:
+    if package_exists := _is_package_available("bitsandbytes"):
         bnb_version = version.parse(importlib.metadata.version("bitsandbytes"))
         return compare_versions(bnb_version, ">=", "0.39.0")
     return False
 
 
 def is_8bit_bnb_available():
-    package_exists = _is_package_available("bitsandbytes")
-    if package_exists:
+    if package_exists := _is_package_available("bitsandbytes"):
         bnb_version = version.parse(importlib.metadata.version("bitsandbytes"))
         return compare_versions(bnb_version, ">=", "0.37.2")
     return False
@@ -153,8 +149,7 @@ def is_datasets_available():
 
 
 def is_aim_available():
-    package_exists = _is_package_available("aim")
-    if package_exists:
+    if package_exists := _is_package_available("aim"):
         aim_version = version.parse(importlib.metadata.version("aim"))
         return compare_versions(aim_version, "<", "4.0.0")
     return False
@@ -205,7 +200,7 @@ def is_mps_available():
 
 def is_ipex_available():
     def get_major_and_minor_from_version(full_version):
-        return str(version.parse(full_version).major) + "." + str(version.parse(full_version).minor)
+        return f"{str(version.parse(full_version).major)}.{str(version.parse(full_version).minor)}"
 
     _torch_version = importlib.metadata.version("torch")
     if importlib.util.find_spec("intel_extension_for_pytorch") is None:
@@ -251,14 +246,13 @@ def is_xpu_available(check_device=False):
     if not parse_flag_from_env("ACCELERATE_USE_XPU", default=True):
         return False
     "Checks if `intel_extension_for_pytorch` is installed and potentially if a XPU is in the environment"
-    if is_ipex_available():
-        import torch
-
-        if is_torch_version("<=", "1.12"):
-            return False
-    else:
+    if not is_ipex_available():
         return False
 
+    import torch
+
+    if is_torch_version("<=", "1.12"):
+        return False
     import intel_extension_for_pytorch  # noqa: F401
 
     if check_device:

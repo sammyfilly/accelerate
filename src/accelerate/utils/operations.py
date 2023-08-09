@@ -313,10 +313,7 @@ def verify_operation(function):
         if PartialState().distributed_type == DistributedType.NO or not PartialState().debug:
             return function(*args, **kwargs)
         operation = f"{function.__module__}.{function.__name__}"
-        if "tensor" in kwargs:
-            tensor = kwargs["tensor"]
-        else:
-            tensor = args[0]
+        tensor = kwargs["tensor"] if "tensor" in kwargs else args[0]
         shapes = get_shape(tensor)
         output = gather_object([shapes])
         if output[0] is not None:

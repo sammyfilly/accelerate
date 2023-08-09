@@ -168,9 +168,7 @@ def dl_preparation_check():
 
     dl = DataLoader(range(length), batch_size=8)
     dl = prepare_data_loader(dl, state.device, state.num_processes, state.process_index, put_on_device=True)
-    result = []
-    for batch in dl:
-        result.append(gather(batch))
+    result = [gather(batch) for batch in dl]
     result = torch.cat(result)
 
     print(state.process_index, result, type(dl))
@@ -185,9 +183,7 @@ def dl_preparation_check():
         put_on_device=True,
         split_batches=True,
     )
-    result = []
-    for batch in dl:
-        result.append(gather(batch))
+    result = [gather(batch) for batch in dl]
     result = torch.cat(result)
     assert torch.equal(result.cpu(), torch.arange(0, length).long()), "Wrong non-shuffled dataloader result."
 
@@ -196,9 +192,7 @@ def dl_preparation_check():
 
     dl = DataLoader(range(length), batch_size=8, shuffle=True)
     dl = prepare_data_loader(dl, state.device, state.num_processes, state.process_index, put_on_device=True)
-    result = []
-    for batch in dl:
-        result.append(gather(batch))
+    result = [gather(batch) for batch in dl]
     result = torch.cat(result).tolist()
     result.sort()
     assert result == list(range(length)), "Wrong shuffled dataloader result."
@@ -212,9 +206,7 @@ def dl_preparation_check():
         put_on_device=True,
         split_batches=True,
     )
-    result = []
-    for batch in dl:
-        result.append(gather(batch))
+    result = [gather(batch) for batch in dl]
     result = torch.cat(result).tolist()
     result.sort()
     assert result == list(range(length)), "Wrong shuffled dataloader result."
@@ -231,9 +223,7 @@ def central_dl_preparation_check():
     dl = prepare_data_loader(
         dl, state.device, state.num_processes, state.process_index, put_on_device=True, dispatch_batches=True
     )
-    result = []
-    for batch in dl:
-        result.append(gather(batch))
+    result = [gather(batch) for batch in dl]
     result = torch.cat(result)
     assert torch.equal(result.cpu(), torch.arange(0, length).long()), "Wrong non-shuffled dataloader result."
 
@@ -247,9 +237,7 @@ def central_dl_preparation_check():
         split_batches=True,
         dispatch_batches=True,
     )
-    result = []
-    for batch in dl:
-        result.append(gather(batch))
+    result = [gather(batch) for batch in dl]
     result = torch.cat(result)
     assert torch.equal(result.cpu(), torch.arange(0, length).long()), "Wrong non-shuffled dataloader result."
 
@@ -260,9 +248,7 @@ def central_dl_preparation_check():
     dl = prepare_data_loader(
         dl, state.device, state.num_processes, state.process_index, put_on_device=True, dispatch_batches=True
     )
-    result = []
-    for batch in dl:
-        result.append(gather(batch))
+    result = [gather(batch) for batch in dl]
     result = torch.cat(result).tolist()
     result.sort()
     assert result == list(range(length)), "Wrong shuffled dataloader result."
@@ -277,9 +263,7 @@ def central_dl_preparation_check():
         split_batches=True,
         dispatch_batches=True,
     )
-    result = []
-    for batch in dl:
-        result.append(gather(batch))
+    result = [gather(batch) for batch in dl]
     result = torch.cat(result).tolist()
     result.sort()
     assert result == list(range(length)), "Wrong shuffled dataloader result."
@@ -295,7 +279,7 @@ def mock_training(length, batch_size, generator):
     train_dl = DataLoader(train_set, batch_size=batch_size, shuffle=True, generator=generator)
     model = RegressionModel()
     optimizer = torch.optim.SGD(model.parameters(), lr=0.1)
-    for epoch in range(3):
+    for _ in range(3):
         for batch in train_dl:
             model.zero_grad()
             output = model(batch["x"])
@@ -323,7 +307,7 @@ def training_check():
     train_dl, model, optimizer = accelerator.prepare(train_dl, model, optimizer)
     set_seed(42)
     generator.manual_seed(42)
-    for epoch in range(3):
+    for _ in range(3):
         for batch in train_dl:
             model.zero_grad()
             output = model(batch["x"])
@@ -502,26 +486,20 @@ def test_split_between_processes_nested_dict():
         with state.split_between_processes(data) as results:
             if state.process_index == 0:
                 assert results["a"] == data_copy["a"][: 8 // state.num_processes]
-            elif state.num_processes == 2:
-                assert results["a"] == data_copy["a"][4:]
-            elif state.process_index == 3:
-                # We return a list each time
-                assert results["a"] == data_copy["a"][-2:], f'Expected: {data_copy["a"][-2]}, Actual: {results["a"]}'
-            if state.process_index == 0:
                 assert results["b"] == data_copy["b"][: 8 // state.num_processes]
-            elif state.num_processes == 2:
-                assert results["b"] == data_copy["b"][4:]
-            elif state.process_index == 3:
-                assert results["b"] == data_copy["b"][-2:]
-            if state.process_index == 0:
                 assert torch.allclose(
                     results["c"], data_copy["c"][: 8 // state.num_processes]
                 ), f"Did not obtain expected values on process 0, expected `{data['c'][:8 // state.num_processes]}`, received: {results['c']}"
             elif state.num_processes == 2:
+                assert results["a"] == data_copy["a"][4:]
+                assert results["b"] == data_copy["b"][4:]
                 assert torch.allclose(
                     results["c"], data_copy["c"][4:]
                 ), f"Did not obtain expected values on process 2, expected `{data['c'][4:]}`, received: {results['c']}"
             elif state.process_index == 3:
+                # We return a list each time
+                assert results["a"] == data_copy["a"][-2:], f'Expected: {data_copy["a"][-2]}, Actual: {results["a"]}'
+                assert results["b"] == data_copy["b"][-2:]
                 assert torch.allclose(
                     results["c"], data_copy["c"][-2:]
                 ), f"Did not obtain expected values on process 4, expected `{data['c'][-2:]}`, received: {results['c']}"

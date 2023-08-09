@@ -305,9 +305,9 @@ class DynamoBackend(str, enum.Enum):
 class EnumWithContains(enum.EnumMeta):
     "A metaclass that adds the ability to check if `self` contains an item with the `in` operator"
 
-    def __contains__(cls, item):
+    def __contains__(self, item):
         try:
-            cls(item)
+            self(item)
         except ValueError:
             return False
         return True
@@ -466,14 +466,16 @@ class TorchDynamoPlugin(KwargsHandler):
     def __post_init__(self):
         prefix = "ACCELERATE_DYNAMO_"
         if self.backend is None:
-            self.backend = os.environ.get(prefix + "BACKEND", "no")
+            self.backend = os.environ.get(f"{prefix}BACKEND", "no")
         self.backend = DynamoBackend(self.backend.upper())
         if self.mode is None:
-            self.mode = os.environ.get(prefix + "MODE", "default")
+            self.mode = os.environ.get(f"{prefix}MODE", "default")
         if self.fullgraph is None:
-            self.fullgraph = strtobool(os.environ.get(prefix + "USE_FULLGRAPH", "False")) == 1
+            self.fullgraph = (
+                strtobool(os.environ.get(f"{prefix}USE_FULLGRAPH", "False")) == 1
+            )
         if self.dynamic is None:
-            self.dynamic = strtobool(os.environ.get(prefix + "USE_DYNAMIC", "False")) == 1
+            self.dynamic = strtobool(os.environ.get(f"{prefix}USE_DYNAMIC", "False")) == 1
 
     def to_dict(self):
         dynamo_config = copy.deepcopy(self.__dict__)
@@ -592,7 +594,7 @@ class DeepSpeedPlugin:
                 "zero3_save_16bit_model": "zero_optimization.stage3_gather_16bit_weights_on_model_save",
             }
             kwargs = {v: getattr(self, k) for k, v in plugin_to_config_mapping.items() if getattr(self, k) is not None}
-            for key in kwargs.keys():
+            for key in kwargs:
                 self.fill_match(key, **kwargs, must_match=False)
             self.hf_ds_config.set_stage_and_offload()
 
@@ -643,16 +645,15 @@ class DeepSpeedPlugin:
             return
 
         if config.get(ds_key) == "auto":
-            if ds_key_long in kwargs:
-                config[ds_key] = kwargs[ds_key_long]
-                return
-            else:
+            if ds_key_long not in kwargs:
                 raise ValueError(
                     f"`{ds_key_long}` not found in kwargs. "
                     f"Please specify `{ds_key_long}` without `auto`(set to correct value) in the DeepSpeed config file or "
                     "pass it in kwargs."
                 )
 
+            config[ds_key] = kwargs[ds_key_long]
+            return
         if not must_match:
             return
 
@@ -885,21 +886,25 @@ class FullyShardedDataParallelPlugin:
 
         prefix = "FSDP_"
         if self.sharding_strategy is None:
-            self.sharding_strategy = ShardingStrategy(int(os.environ.get(prefix + "SHARDING_STRATEGY", 1)))
+            self.sharding_strategy = ShardingStrategy(
+                int(os.environ.get(f"{prefix}SHARDING_STRATEGY", 1))
+            )
 
         if self.cpu_offload is None:
-            if strtobool(os.environ.get(prefix + "OFFLOAD_PARAMS", "False")) == 1:
+            if strtobool(os.environ.get(f"{prefix}OFFLOAD_PARAMS", "False")) == 1:
                 self.cpu_offload = CPUOffload(offload_params=True)
             else:
                 self.cpu_offload = CPUOffload(offload_params=False)
 
         if self.backward_prefetch is None:
-            prefetch_policy = os.environ.get(prefix + "BACKWARD_PREFETCH", "NO_PREFETCH")
+            prefetch_policy = os.environ.get(f"{prefix}BACKWARD_PREFETCH", "NO_PREFETCH")
             if prefetch_policy != FSDP_BACKWARD_PREFETCH[-1]:
                 self.backward_prefetch = BackwardPrefetch(FSDP_BACKWARD_PREFETCH.index(prefetch_policy) + 1)
 
         if self.state_dict_type is None:
-            state_dict_type_policy = os.environ.get(prefix + "STATE_DICT_TYPE", "FULL_STATE_DICT")
+            state_dict_type_policy = os.environ.get(
+                f"{prefix}STATE_DICT_TYPE", "FULL_STATE_DICT"
+            )
             self.state_dict_type = StateDictType(FSDP_STATE_DICT_TYPE.index(state_dict_type_policy) + 1)
 
             if self.state_dict_type == StateDictType.FULL_STATE_DICT:
@@ -908,9 +913,15 @@ class FullyShardedDataParallelPlugin:
                 if self.optim_state_dict_config is None:
                     self.optim_state_dict_config = FullOptimStateDictConfig(offload_to_cpu=True, rank0_only=True)
 
-        self.use_orig_params = strtobool(os.environ.get(prefix + "USE_ORIG_PARAMS", "False")) == 1
-        self.sync_module_states = strtobool(os.environ.get(prefix + "SYNC_MODULE_STATES", "False")) == 1
-        self.forward_prefetch = strtobool(os.environ.get(prefix + "FORWARD_PREFETCH", "False")) == 1
+        self.use_orig_params = (
+            strtobool(os.environ.get(f"{prefix}USE_ORIG_PARAMS", "False")) == 1
+        )
+        self.sync_module_states = (
+            strtobool(os.environ.get(f"{prefix}SYNC_MODULE_STATES", "False")) == 1
+        )
+        self.forward_prefetch = (
+            strtobool(os.environ.get(f"{prefix}FORWARD_PREFETCH", "False")) == 1
+        )
 
     @staticmethod
     def get_module_class_from_name(module, name):
@@ -924,7 +935,7 @@ class FullyShardedDataParallelPlugin:
         modules_children = list(module.children())
         if module.__class__.__name__ == name:
             return module.__class__
-        elif len(modules_children) == 0:
+        elif not modules_children:
             return
         else:
             for child_module in modules_children:
@@ -1140,21 +1151,32 @@ class MegatronLMPlugin:
     def __post_init__(self):
         prefix = "MEGATRON_LM_"
         if self.tp_degree is None:
-            self.tp_degree = int(os.environ.get(prefix + "TP_DEGREE", 1))
+            self.tp_degree = int(os.environ.get(f"{prefix}TP_DEGREE", 1))
         if self.pp_degree is None:
-            self.pp_degree = int(os.environ.get(prefix + "PP_DEGREE", 1))
+            self.pp_degree = int(os.environ.get(f"{prefix}PP_DEGREE", 1))
         if self.num_micro_batches is None:
-            self.num_micro_batches = int(os.environ.get(prefix + "NUM_MICRO_BATCHES", 1))
+            self.num_micro_batches = int(os.environ.get(f"{prefix}NUM_MICRO_BATCHES", 1))
         if self.gradient_clipping is None:
-            self.gradient_clipping = float(os.environ.get(prefix + "GRADIENT_CLIPPING", 1.0))
+            self.gradient_clipping = float(
+                os.environ.get(f"{prefix}GRADIENT_CLIPPING", 1.0)
+            )
         if self.recompute_activation is None:
-            self.recompute_activation = strtobool(os.environ.get(prefix + "RECOMPUTE_ACTIVATION", "False")) == 1
+            self.recompute_activation = (
+                strtobool(os.environ.get(f"{prefix}RECOMPUTE_ACTIVATION", "False"))
+                == 1
+            )
         if self.use_distributed_optimizer is None:
             self.use_distributed_optimizer = (
-                strtobool(os.environ.get(prefix + "USE_DISTRIBUTED_OPTIMIZER", "False")) == 1
+                strtobool(
+                    os.environ.get(f"{prefix}USE_DISTRIBUTED_OPTIMIZER", "False")
+                )
+                == 1
             )
         if self.sequence_parallelism is None:
-            self.sequence_parallelism = strtobool(os.environ.get(prefix + "SEQUENCE_PARALLELISM", "False")) == 1
+            self.sequence_parallelism = (
+                strtobool(os.environ.get(f"{prefix}SEQUENCE_PARALLELISM", "False"))
+                == 1
+            )
 
         if self.pp_degree > 1 or self.use_distributed_optimizer:
             self.DDP_impl = "local"
@@ -1345,7 +1367,7 @@ class MegatronLMPlugin:
         parser = _add_logging_args(parser)
         logging_args = parser.parse_known_args()
         self.dataset_args = vars(logging_args[0])
-        for key, value in self.dataset_args.items():
+        for key in self.dataset_args:
             if key.startswith("log_"):
                 self.megatron_lm_default_args[key] = True
             elif key.startswith("no_log_"):

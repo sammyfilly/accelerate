@@ -444,10 +444,10 @@ class MixedInt8EmptyModelTest(unittest.TestCase):
             model_8bit_from_saved = load_and_quantize_model(
                 model_8bit_from_saved,
                 bnb_quantization_config,
-                weights_location=tmpdirname + "/pytorch_model.bin",
+                weights_location=f"{tmpdirname}/pytorch_model.bin",
                 device_map=device_map,
                 no_split_module_classes=["BloomBlock"],
-                offload_folder=tmpdirname + "/tmp",
+                offload_folder=f"{tmpdirname}/tmp",
                 offload_state_dict=True,
             )
 
@@ -696,12 +696,12 @@ class Bnb4BitEmptyModelTest(unittest.TestCase):
         self.model_4bit.get_memory_footprint()
 
         for name, module in self.model_4bit.named_modules():
-            if isinstance(module, torch.nn.Linear):
-                if (
+            if (
                     name
                     not in self.bnb_quantization_config.keep_in_fp32_modules
                     + self.bnb_quantization_config.skip_modules
                 ):
+                if isinstance(module, torch.nn.Linear):
                     # 4-bit parameters are packed in uint8 variables
                     self.assertTrue(module.weight.dtype == torch.uint8)
 
@@ -919,12 +919,12 @@ class Bnb4BitTestLoadedModel(unittest.TestCase):
         self.model_4bit.get_memory_footprint()
 
         for name, module in self.model_4bit.named_modules():
-            if isinstance(module, torch.nn.Linear):
-                if (
+            if (
                     name
                     not in self.bnb_quantization_config.keep_in_fp32_modules
                     + self.bnb_quantization_config.skip_modules
                 ):
+                if isinstance(module, torch.nn.Linear):
                     # 4-bit parameters are packed in uint8 variables
                     self.assertTrue(module.weight.dtype == torch.uint8)
 

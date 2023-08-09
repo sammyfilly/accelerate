@@ -289,13 +289,7 @@ class PartialState:
         self.fork_launched = parse_flag_from_env("FORK_LAUNCHED", 0)
 
     def __repr__(self) -> str:
-        return (
-            f"Distributed environment: {self.distributed_type}{('  Backend: ' + self.backend) if self.backend else ''}\n"
-            f"Num processes: {self.num_processes}\n"
-            f"Process index: {self.process_index}\n"
-            f"Local process index: {self.local_process_index}\n"
-            f"Device: {self.device}\n"
-        )
+        return f"Distributed environment: {self.distributed_type}{f'  Backend: {self.backend}' if self.backend else ''}\nNum processes: {self.num_processes}\nProcess index: {self.process_index}\nLocal process index: {self.local_process_index}\nDevice: {self.device}\n"
 
     @staticmethod
     def _reset_state():
@@ -424,7 +418,7 @@ class PartialState:
         # Nested dictionary of any types
         if isinstance(inputs, dict):
             length = len(inputs[list(inputs.keys())[0]])
-            if not all(len(v) == length for v in inputs.values()):
+            if any(len(v) != length for v in inputs.values()):
                 raise ValueError("All values in the dictionary must have the same length")
         num_samples_per_process = math.ceil(length / self.num_processes)
         start_index = self.process_index * num_samples_per_process
@@ -796,7 +790,7 @@ class AcceleratorState:
         return self._shared_state != PartialState._shared_state
 
     def __repr__(self):
-        repr = PartialState().__repr__() + f"\nMixed precision type: {self.mixed_precision}\n"
+        repr = f"{PartialState().__repr__()}\nMixed precision type: {self.mixed_precision}\n"
         if self.distributed_type == DistributedType.DEEPSPEED:
             repr += f"ds_config: {self.deepspeed_plugin.deepspeed_config}\n"
         return repr
@@ -1001,9 +995,7 @@ class GradientState:
     @property
     def remainder(self) -> int:
         "Returns the number of extra samples that were added from padding the dataloader"
-        if not self.in_dataloader:
-            return -1
-        return self.active_dataloader.remainder
+        return -1 if not self.in_dataloader else self.active_dataloader.remainder
 
     def __repr__(self):
         return (

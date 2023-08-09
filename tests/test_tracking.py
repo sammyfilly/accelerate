@@ -140,13 +140,10 @@ class WandBTrackingTest(TempDirTestCase, MockingTestCase):
         if record:
             pattern = rf"Record: {pattern}"
         cleaned_record = re.findall(pattern, log)[0]
-        # A config
-        if section == "config" or section == "history":
-            cleaned_record = re.findall(r'"([a-zA-Z0-9_.,]+)', cleaned_record)
-            return {key: val for key, val in zip(cleaned_record[0::2], cleaned_record[1::2])}
-        # Everything else
-        else:
+        if section not in {"config", "history"}:
             return dict(re.findall(r'(\w+): "([^\s]+)"', cleaned_record))
+        cleaned_record = re.findall(r'"([a-zA-Z0-9_.,]+)', cleaned_record)
+        return dict(zip(cleaned_record[::2], cleaned_record[1::2]))
 
     @skip
     def test_wandb(self):
